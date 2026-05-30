@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <conio.h>
 #include <time.h>
+#include <stdint.h>
 
 enum Tetris
 {
@@ -14,6 +15,12 @@ enum Tetris
     T
 };
 
+enum Direction
+{
+    left,
+    right
+};
+
 struct Shape
 {
     int falls;
@@ -22,7 +29,24 @@ struct Shape
     int pos_y;
 };
 
-void handle_input()
+int can_move_dir(struct Shape *falling_shape, int (*board)[10], int direction)
+{
+    if (direction == left)
+    {
+        for (int x = 0; x < 2; x++)
+        {
+            for (int y = 0; y < 4; y++)
+            {
+                if (!falling_shape->shape[x])
+                {
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+void handle_input(struct Shape *falling_shape, int (*board)[10])
 {
     if (_kbhit())
     {
@@ -32,6 +56,13 @@ void handle_input()
         }
         else if (c == 'a')
         {
+            if (!can_move_dir(falling_shape, board, left))
+            {
+                return;
+            }
+            erase(&falling_shape, &board);
+            falling_shape->pos_x--;
+            draw(&falling_shape, &board);
         }
         else if (c == 's')
         {
@@ -50,6 +81,8 @@ void update_game(struct Shape *falling_shape, int (*board)[10], int (*shapes)[8]
         set_random_shape(falling_shape, shapes);
     }
 
+    // TODO: rework for arrays size 16
+
     // Handle piece touching ground actual ground
     for (int i = 8; i >= 0; i--)
     {
@@ -67,7 +100,7 @@ void update_game(struct Shape *falling_shape, int (*board)[10], int (*shapes)[8]
     }
 }
 
-void set_random_shape(struct Shape *falling_shape, int (*shapes)[8])
+void set_random_shape(struct Shape *falling_shape, int (*shapes)[16])
 {
     srand(time(NULL));
     int random_number = rand() % 7;
@@ -80,6 +113,18 @@ void set_random_shape(struct Shape *falling_shape, int (*shapes)[8])
 
 void draw(struct Shape *falling_shape, int (*board)[10])
 {
+    for (int x = 0; x < 4; x++)
+    {
+        for (int y = 0; y < 2; y++)
+        {
+            if (!falling_shape->shape[x + 4 * y])
+            {
+                continue;
+            }
+
+            board[x - 1 + falling_shape->pos_x][falling_shape->pos_y - y] = 1;
+        }
+    }
 }
 
 void erase(struct Shape *falling_shape, int (*board)[10])
@@ -103,43 +148,58 @@ void render()
 }
 
 //
-//  The position is center by second upper square:
+//  The position is centered by following square:
+//      0 0 0 0
+//      0 0 0 0
 //      0 1 0 0
 //      0 0 0 0
 //
 
 int main()
 {
-    int board[20][10] = {0};
+    int board[23][10] = {0}; // Add extra 3 lines on top as a buffer
     // clang-format off
-    int shapes[7][8] = {
+    int shapes[7][16] = {
         {
+            0, 0, 0, 0,
             0, 1, 1, 0, 
-            0, 1, 1, 0
-        },
-        {
-            1, 1, 1, 1,
+            0, 1, 1, 0,
             0, 0, 0, 0
         },
         {
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 1, 1, 1,
+            0, 0, 0, 0
+        },
+        {   0, 0, 0, 0,
             0, 1, 1, 0,
-            1, 1, 0, 0
-        },
-        {
             1, 1, 0, 0,
-            0, 1, 1, 0
+            0, 0, 0, 0,
+        },
+        {   
+            0, 0, 0, 0,
+            1, 1, 0, 0,
+            0, 1, 1, 0,
+            0, 0, 0, 0
         },
         {
+            0, 0, 0, 0,
+            0, 0, 0, 0,
             1, 1, 1, 0,
             1, 0, 0, 0
         },
         {
+            0, 0, 0, 0,
             1, 0, 0, 0,
-            1, 1, 1, 1,
+            1, 1, 1, 0,
+            0, 0, 0, 0
         },
         {
-            0, 1, 1, 1,
-            0, 0, 1, 0
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 1, 1, 0,
+            0, 1, 0, 0
         }
     };
     // clang-format on
@@ -149,7 +209,7 @@ int main()
 
     while (game_running)
     {
-        handle_input();
+        handle_input(&falling_shape, &board);
         update_game(&falling_shape, &board, &shapes);
         render();
 

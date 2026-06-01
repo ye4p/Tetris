@@ -33,16 +33,41 @@ int can_move_dir(struct Shape *falling_shape, int (*board)[10], int direction)
 {
     if (direction == left)
     {
-        for (int x = 0; x < 2; x++)
+        for (int x = 0; x < 4; x++)
         {
             for (int y = 0; y < 4; y++)
             {
-                if (!falling_shape->shape[x])
+                if (!falling_shape->shape[x + y * 4])
                 {
                     continue;
                 }
+                int shift = x - 1;
+                if (0 <= (falling_shape->pos_x - shift))
+                {
+                    return 1;
+                }
             }
         }
+        return 0;
+    }
+    else
+    {
+        for (int x = 3; x > -1; x--)
+        {
+            for (int y = 0; y < 4; y++)
+            {
+                if (!falling_shape->shape[x + y * 4])
+                {
+                    continue;
+                }
+                int shift = x - 1;
+                if (10 >= (falling_shape->pos_x + shift))
+                {
+                    return 1;
+                }
+            }
+        }
+        return 0;
     }
 }
 
@@ -66,6 +91,13 @@ void handle_input(struct Shape *falling_shape, int (*board)[10])
         }
         else if (c == 's')
         {
+            if (!can_move_dir(falling_shape, board, right))
+            {
+                return;
+            }
+            erase(&falling_shape, &board);
+            falling_shape->pos_x++;
+            draw(&falling_shape, &board);
         }
         else if (c == 'd')
         {

@@ -27,6 +27,7 @@ typedef struct Shape
 {
     int falls;
     int (*shape)[16];
+    int shape_type;
     int pos_x;
     int pos_y;
 } Shape;
@@ -46,8 +47,8 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction);
 void set_random_shape(Shape *falling_shape, int (*shapes)[16]);
 void draw(Shape *falling_shape, int(*board));
 void erase(Shape *falling_shape, int(*board));
-int can_rotate(Shape *falling_shape, int(*board));
-void rotate(Shape *falling_shape);
+int can_rotate(Shape *falling_shape, int(*board), int(*arr));
+int *rotate(Shape *falling_shape, int(*arr));
 
 //
 //
@@ -161,12 +162,17 @@ void handle_input(Shape *falling_shape, int(*board))
         char c = _getch();
         if (c == 'w')
         {
-            if (!can_rotate(falling_shape, board))
+            int arr[16] = {0};
+            rotate(falling_shape, arr);
+
+            if (!can_rotate(falling_shape, board, arr))
             {
                 return;
             }
             erase(falling_shape, board);
-            rotate(falling_shape);
+
+            memcpy(falling_shape->shape, arr, sizeof(arr));
+
             draw(falling_shape, board);
         }
         else if (c == 'a')
@@ -231,6 +237,7 @@ void set_random_shape(Shape *falling_shape, int (*shapes)[16])
     int random_number = rand() % 7;
 
     falling_shape->falls = 1;
+    falling_shape->shape_type = random_number;
     falling_shape->shape = &shapes[random_number];
     falling_shape->pos_x = 4;
     falling_shape->pos_y = 19;
@@ -272,19 +279,84 @@ void erase(Shape *falling_shape, int(*board))
     }
 }
 
-int can_rotate(Shape *falling_shape, int(*board))
+int can_rotate(Shape *falling_shape, int(*board), int(*arr))
 {
+    erase(falling_shape, board);
+    for (int x = 0; x < 4; x++)
+    {
+        for (int y = 0; y < 4; y++)
+        {
+            if (!arr[x + 4 * y])
+                continue;
+
+            int square = find_board_square(falling_shape, x, y);
+
+            // Check for being OOB
+            int real_x = square % 10;
+            int real_y = square / 10;
+            if (real_x > 9 || real_x < 0 || real_y < 0)
+            {
+                draw(falling_shape, board);
+                return 0;
+            }
+
+            // Check for intersection with other shapes
+            if (board[square])
+            {
+                draw(falling_shape, board);
+                return 0;
+            }
+        }
+    }
+    draw(falling_shape, board);
+    return 1;
 }
 
-void rotate(Shape *falling_shape)
+int *rotate(Shape *falling_shape, int(*arr))
 {
     // Should rotate shape 90 degrees clockwise
-    int arr[16] = {0};
+
+    if (falling_shape->shape_type < 2)
+    {
+        int i = 0;
+
+        for (int x = 0; x < 4; x++)
+        {
+            for (int y = 3; y > -1; y--)
+            {
+                arr[x + 4 * y] = (*falling_shape->shape)[i];
+                i++;
+            }
+        }
+    }
+    else
+    {
+        int i = 4;
+
+        for (int x = 0; x < 4; x++)
+        {
+            for (int y = 3; y > -1; y--)
+            {
+                if (x == 3 || y == 0)
+                {
+                    i += 1;
+                    continue;
+                }
+                arr[x + 4 * y] = (*falling_shape->shape)[i];
+                i++;
+            }
+        }
+    }
 }
 
 //  0 0 0 0         0 1 0 0
-//  0 0 0 0     <-- 0 1 0 0
+//  0 0 0 0     --> 0 1 0 0
 //  1 1 1 1         0 1 0 0
+//  0 0 0 0         0 1 0 0
+
+//  0 0 0 0         0 0 0 0
+//  1 0 0 0     --> 0 1 1 0
+//  1 1 1 0         0 1 0 0
 //  0 0 0 0         0 1 0 0
 
 void render(int(*board))
@@ -423,15 +495,33 @@ int main()
 
     int game_running = 1;
 
-    Shape falling_shape = {0, &empty_arr, -1, -1};
+    Shape falling_shape; // {1, &empty_arr, -1, -1};
+    falling_shape.falls = 0;
+    falling_shape.shape = malloc(sizeof(int) * 16);
+    falling_shape.shape = &empty_arr;
+    falling_shape.pos_x = -1;
+    falling_shape.pos_y = -1;
 
     // set_random_shape(&falling_shape, shapes);
-    // falling_shape.pos_y = falling_shape.pos_y - 3;
-    // for (int i = 0; i < 16; i++)
-    // {
-    //     printf("%i\n", falling_shape.shape[0][i]);
-    // }
+
+    // falling_shape.pos_y -= 3;
     // draw(&falling_shape, board);
+
+    // falling_shape.pos_y -= 3;
+    // int arr[16] = {0};
+    // rotate(&falling_shape, arr);
+    // memcpy(falling_shape.shape, arr, sizeof(arr));
+
+    // draw(&falling_shape, board);
+
+    // falling_shape.pos_y -= 3;
+    // rotate(&falling_shape);
+    // draw(&falling_shape, board);
+
+    // falling_shape.pos_y -= 3;
+    // rotate(&falling_shape);
+    // draw(&falling_shape, board);
+
     render(board);
 
     while (game_running)
@@ -442,6 +532,6 @@ int main()
 
         sleep_small_amount();
     }
-
+    free(falling_shape.shape);
     return 0;
 }

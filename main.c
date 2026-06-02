@@ -3,6 +3,7 @@
 #include <conio.h>
 #include <time.h>
 #include <stdint.h>
+#include <windows.h>
 
 enum Tetris
 {
@@ -18,66 +19,155 @@ enum Tetris
 enum Direction
 {
     left,
-    right
+    right,
+    down
 };
 
-struct Shape
+typedef struct Shape
 {
     int falls;
-    int (*shape)[8];
+    int (*shape)[16];
     int pos_x;
     int pos_y;
-};
+} Shape;
 
-int can_move_dir(struct Shape *falling_shape, int (*board)[10], int direction)
+//
+//
+//      FUNCTION DECLARATIONS
+//
+//
+
+void update_game(Shape *falling_shape, int(*board), int (*shapes)[16]);
+void handle_input(Shape *falling_shape, int(*board));
+void render(int(*board));
+void sleep_small_amount(void);
+int find_board_square(Shape *falling_shape, int x, int y);
+int can_move_dir(Shape *falling_shape, int(*board), int direction);
+void set_random_shape(Shape *falling_shape, int (*shapes)[16]);
+void draw(Shape *falling_shape, int(*board));
+void erase(Shape *falling_shape, int(*board));
+int can_rotate(Shape *falling_shape, int(*board));
+void rotate(Shape *falling_shape);
+
+//
+//
+//
+
+void sleep_small_amount(void)
 {
+    int sleep_amount = 500;
+    int sleep_interval = 100;
+    while (!_kbhit() && sleep_amount)
+    {
+        Sleep(sleep_interval);
+        sleep_amount -= sleep_interval;
+    }
+}
+
+int find_board_square(Shape *falling_shape, int x, int y)
+{
+    return (falling_shape->pos_x + x - 1) + (falling_shape->pos_y + y) * 10;
+}
+
+int can_move_dir(Shape *falling_shape, int(*board), int direction)
+{
+    erase(falling_shape, board); // Necessary so that won't consider itself as an obstacle
     if (direction == left)
     {
         for (int x = 0; x < 4; x++)
         {
             for (int y = 0; y < 4; y++)
             {
-                if (!falling_shape->shape[x + y * 4])
+                if (!(*falling_shape->shape)[x + y * 4])
                 {
                     continue;
                 }
-                int shift = x - 1;
-                if (0 <= (falling_shape->pos_x - shift))
+                int shift = x - 1; // Accounts for where shape is centered in array of 16.
+
+                // Check if OOB
+                if ((falling_shape->pos_x - 3 + x) < 0)
                 {
-                    return 1;
+                    return 0;
+                }
+
+                // Check if hits another piece
+                int square = find_board_square(falling_shape, x - 1, y);
+
+                if (board[square])
+                {
+                    return 0;
                 }
             }
         }
-        return 0;
+        return 1;
     }
-    else
+    else if (direction == right)
     {
         for (int x = 3; x > -1; x--)
         {
             for (int y = 0; y < 4; y++)
             {
-                if (!falling_shape->shape[x + y * 4])
+                if (!(*falling_shape->shape)[x + y * 4])
                 {
                     continue;
                 }
+
+                // Check if OOB
                 int shift = x - 1;
-                if (10 >= (falling_shape->pos_x + shift))
+                if ((falling_shape->pos_x + x - 1) > 9)
                 {
-                    return 1;
+                    return 0;
+                }
+
+                // Check if hits another piece
+                int square = find_board_square(falling_shape, x + 1, y); // +1 cause checking if touches right
+
+                if (board[square])
+                {
+                    return 0;
                 }
             }
         }
-        return 0;
+        return 1;
+    }
+    else if (direction == down)
+    {
+        for (int y = 3; y > -1; y--)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                if (!((*falling_shape->shape)[x + y * 4]))
+                {
+                    continue;
+                }
+
+                // Handle other shapes below and ground
+                int square = find_board_square(falling_shape, x - 1, y - 1);
+
+                if (square < 0 || board[square])
+                {
+                    return 0;
+                }
+            }
+        }
+        return 1;
     }
 }
 
-void handle_input(struct Shape *falling_shape, int (*board)[10])
+void handle_input(Shape *falling_shape, int(*board))
 {
     if (_kbhit())
     {
         char c = _getch();
         if (c == 'w')
         {
+            if (!can_rotate(falling_shape, board))
+            {
+                return;
+            }
+            erase(falling_shape, board);
+            rotate(falling_shape);
+            draw(falling_shape, board);
         }
         else if (c == 'a')
         {
@@ -85,27 +175,36 @@ void handle_input(struct Shape *falling_shape, int (*board)[10])
             {
                 return;
             }
-            erase(&falling_shape, &board);
+            erase(falling_shape, board);
             falling_shape->pos_x--;
-            draw(&falling_shape, &board);
+            draw(falling_shape, board);
         }
-        else if (c == 's')
+        else if (c == 'd')
         {
+            printf("d was clicked\n");
+            printf("can_move_dir(falling_shape, board, right): %i", can_move_dir(falling_shape, board, right));
             if (!can_move_dir(falling_shape, board, right))
             {
                 return;
             }
-            erase(&falling_shape, &board);
+            erase(falling_shape, board);
             falling_shape->pos_x++;
-            draw(&falling_shape, &board);
+            draw(falling_shape, board);
         }
-        else if (c == 'd')
+        else if (c == 's')
         {
+            if (!can_move_dir(falling_shape, board, down))
+            {
+                return;
+            }
+            erase(falling_shape, board);
+            falling_shape->pos_y--;
+            draw(falling_shape, board);
         }
     }
 }
 
-void update_game(struct Shape *falling_shape, int (*board)[10], int (*shapes)[8])
+void update_game(Shape *falling_shape, int(*board), int (*shapes)[16])
 {
     // Handle getting new piece
     if (falling_shape->falls != 1)
@@ -113,71 +212,125 @@ void update_game(struct Shape *falling_shape, int (*board)[10], int (*shapes)[8]
         set_random_shape(falling_shape, shapes);
     }
 
-    // TODO: rework for arrays size 16
-
-    // Handle piece touching ground actual ground
-    for (int i = 8; i >= 0; i--)
+    printf("can_move_dir(falling_shape, board, down): %i\n", can_move_dir(falling_shape, board, down));
+    if (!can_move_dir(falling_shape, board, down))
     {
-        if (falling_shape->shape[i])
-        {
-            // Check if it is on actual ground
-            if (!(((i > 3) && (falling_shape->pos_y <= 1)) || ((i < 4) && (falling_shape->pos_y == 0))))
-            {
-                continue;
-            }
-            // caught piece touching the grounds.
-            draw(falling_shape, board);
-            set_random_shape(falling_shape, shapes);
-        }
+        draw(falling_shape, board); // Might be extra draw that isn't actually needed
+        set_random_shape(falling_shape, shapes);
+        return;
     }
+
+    erase(falling_shape, board);
+    falling_shape->pos_y--;
+    draw(falling_shape, board);
 }
 
-void set_random_shape(struct Shape *falling_shape, int (*shapes)[16])
+void set_random_shape(Shape *falling_shape, int (*shapes)[16])
 {
     srand(time(NULL));
     int random_number = rand() % 7;
 
     falling_shape->falls = 1;
-    falling_shape->shape = shapes[random_number];
+    falling_shape->shape = &shapes[random_number];
     falling_shape->pos_x = 4;
     falling_shape->pos_y = 19;
 }
 
-void draw(struct Shape *falling_shape, int (*board)[10])
+void draw(Shape *falling_shape, int(*board))
 {
     for (int x = 0; x < 4; x++)
     {
-        for (int y = 0; y < 2; y++)
+        for (int y = 0; y < 4; y++)
         {
-            if (!falling_shape->shape[x + 4 * y])
+            if (!((*falling_shape->shape)[x + 4 * y]))
             {
                 continue;
             }
 
-            board[x - 1 + falling_shape->pos_x][falling_shape->pos_y - y] = 1;
+            int square = find_board_square(falling_shape, x - 1, y);
+            board[square] = 1;
         }
     }
 }
 
-void erase(struct Shape *falling_shape, int (*board)[10])
+void erase(Shape *falling_shape, int(*board))
 {
     for (int x = 0; x < 4; x++)
     {
-        for (int y = 0; y < 2; y++)
+        for (int y = 0; y < 4; y++)
         {
-            if (!falling_shape->shape[x + 4 * y])
+            if (!((*falling_shape->shape)[x + 4 * y]))
             {
                 continue;
             }
 
-            board[x - 1 + falling_shape->pos_x][falling_shape->pos_y - y] = 0;
+            int square = find_board_square(falling_shape, x - 1, y);
+            board[square] = 0;
+
+            // board[x - 1 + falling_shape->pos_x][falling_shape->pos_y - y] = 0;
         }
     }
 }
 
-void render()
+int can_rotate(Shape *falling_shape, int(*board))
 {
 }
+
+void rotate(Shape *falling_shape)
+{
+    // Should rotate shape 90 degrees clockwise
+    int arr[16] = {0};
+}
+
+//  0 0 0 0         0 1 0 0
+//  0 0 0 0     <-- 0 1 0 0
+//  1 1 1 1         0 1 0 0
+//  0 0 0 0         0 1 0 0
+
+void render(int(*board))
+{
+    for (int y = 22; y > -2; y--)
+    {
+        // printf("value of y is %i\n", y);
+        if (y == -1)
+        {
+            printf("######################\n");
+            continue;
+        }
+        for (int x = -1; x < 11; x++)
+        {
+            // printf("value of x is %i\n", x);
+            if (x == -1 || x == 10)
+            {
+                printf("|");
+                continue;
+            }
+            if (board[x + 10 * y] == 1)
+            {
+                // printf("1 at squares %i and %i", x, y);
+                printf("[]");
+            }
+            // else if (board[x + 10 * y] == 2)
+            // {
+            //     printf("{}");
+            // }
+            // else if (board[x + 10 * y] == 3)
+            // {
+            //     printf("/\\");
+            // }
+            else
+            {
+                printf("  ");
+            }
+        }
+        printf("\n");
+    }
+}
+
+//
+//      [][][]
+//        []
+//
 
 //
 //  The position is centered by following square:
@@ -187,9 +340,34 @@ void render()
 //      0 0 0 0
 //
 
+//
+//
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0            0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0            0 0 0 0
+//  0 1 1 1 0 0 0 0 0 0     <--    1 1 1 0
+//  0 1 0 0 0 0 0 0 0 0            1 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//  0 0 0 0 0 0 0 0 0 0
+//      ^
+//  0 1 2 3 4 5 6 7 8 9
+
 int main()
 {
-    int board[23][10] = {0}; // Add extra 3 lines on top as a buffer
+    int board[230] = {0}; // Add extra 3 lines on top as a buffer
     // clang-format off
     int shapes[7][16] = {
         {
@@ -234,16 +412,33 @@ int main()
             0, 1, 0, 0
         }
     };
+
+    int empty_arr[16]= {
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    };
     // clang-format on
+
     int game_running = 1;
 
-    struct Shape falling_shape = {0, -1, -1, -1};
+    Shape falling_shape = {0, &empty_arr, -1, -1};
+
+    // set_random_shape(&falling_shape, shapes);
+    // falling_shape.pos_y = falling_shape.pos_y - 3;
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     printf("%i\n", falling_shape.shape[0][i]);
+    // }
+    // draw(&falling_shape, board);
+    render(board);
 
     while (game_running)
     {
-        handle_input(&falling_shape, &board);
-        update_game(&falling_shape, &board, &shapes);
-        render();
+        handle_input(&falling_shape, board);
+        update_game(&falling_shape, board, shapes);
+        render(board);
 
         sleep_small_amount();
     }

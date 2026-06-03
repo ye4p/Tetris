@@ -49,6 +49,10 @@ void draw(Shape *falling_shape, int(*board));
 void erase(Shape *falling_shape, int(*board));
 int can_rotate(Shape *falling_shape, int(*board), int(*arr));
 int *rotate(Shape *falling_shape, int(*arr));
+int check_board_row(int(*board));
+void clear_row(int(*board), int row);
+void bring_board_down(int(*board), int row);
+void play_fall_animation(int(*board));
 
 //
 //
@@ -83,7 +87,6 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
                 {
                     continue;
                 }
-                int shift = x - 1; // Accounts for where shape is centered in array of 16.
 
                 // Check if OOB
                 if ((falling_shape->pos_x - 3 + x) < 0)
@@ -114,7 +117,6 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
                 }
 
                 // Check if OOB
-                int shift = x - 1;
                 if ((falling_shape->pos_x + x - 1) > 9)
                 {
                     return 0;
@@ -122,6 +124,13 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
 
                 // Check if hits another piece
                 int square = find_board_square(falling_shape, x + 1, y); // +1 cause checking if touches right
+
+                // TODO: FIX WRONG Y indexing that is used to calculate square
+
+                //  0   2
+                //  1   1
+                //  2   0
+                //  3   -1
 
                 if (board[square])
                 {
@@ -187,8 +196,6 @@ void handle_input(Shape *falling_shape, int(*board))
         }
         else if (c == 'd')
         {
-            printf("d was clicked\n");
-            printf("can_move_dir(falling_shape, board, right): %i", can_move_dir(falling_shape, board, right));
             if (!can_move_dir(falling_shape, board, right))
             {
                 return;
@@ -212,17 +219,25 @@ void handle_input(Shape *falling_shape, int(*board))
 
 void update_game(Shape *falling_shape, int(*board), int (*shapes)[16])
 {
+
     // Handle getting new piece
     if (falling_shape->falls != 1)
     {
+        // printf("updating shape object");
+        // Set new shape
         set_random_shape(falling_shape, shapes);
+
+        // Play animation
+        play_fall_animation(board);
     }
 
-    printf("can_move_dir(falling_shape, board, down): %i\n", can_move_dir(falling_shape, board, down));
     if (!can_move_dir(falling_shape, board, down))
     {
         draw(falling_shape, board); // Might be extra draw that isn't actually needed
         set_random_shape(falling_shape, shapes);
+
+        // Play animation
+        play_fall_animation(board);
         return;
     }
 
@@ -240,7 +255,7 @@ void set_random_shape(Shape *falling_shape, int (*shapes)[16])
     falling_shape->shape_type = random_number;
     falling_shape->shape = &shapes[random_number];
     falling_shape->pos_x = 4;
-    falling_shape->pos_y = 19;
+    falling_shape->pos_y = 21;
 }
 
 void draw(Shape *falling_shape, int(*board))
@@ -286,23 +301,25 @@ int can_rotate(Shape *falling_shape, int(*board), int(*arr))
     {
         for (int y = 0; y < 4; y++)
         {
-            if (!arr[x + 4 * y])
+            if (!arr[x + 4 * y] && !(*falling_shape->shape)[x + 4 * y])
                 continue;
 
             int square = find_board_square(falling_shape, x, y);
 
             // Check for being OOB
-            int real_x = square % 10;
-            int real_y = square / 10;
+            int real_x = x - 2 + falling_shape->pos_x;
+            int real_y = y + falling_shape->pos_y;
             if (real_x > 9 || real_x < 0 || real_y < 0)
             {
                 draw(falling_shape, board);
+                // printf("can't rotate, OOB with x: %i, and y:%i\n", real_x, real_y);
                 return 0;
             }
 
             // Check for intersection with other shapes
             if (board[square])
             {
+                // printf("can't rotate, space is taken\n");
                 draw(falling_shape, board);
                 return 0;
             }
@@ -358,6 +375,67 @@ int *rotate(Shape *falling_shape, int(*arr))
 //  1 0 0 0     --> 0 1 1 0
 //  1 1 1 0         0 1 0 0
 //  0 0 0 0         0 1 0 0
+
+// Returns row that is going to be removed
+int check_board_row(int(*board))
+{
+    for (int y = 0; y < 22; y++)
+    {
+        int count = 0;
+        for (int x = 0; x < 10; x++)
+        {
+            if (board[x + 10 * y])
+            {
+                count++;
+            }
+        }
+        if (count == 10)
+        {
+            return y;
+        }
+    }
+    return -1;
+}
+
+void clear_row(int(*board), int row)
+{
+    for (int x = 0; x < 10; x++)
+    {
+        board[x + 10 * row] = 0;
+    }
+}
+
+void bring_board_down(int(*board), int row)
+{
+    render(board);
+    Sleep(500);
+    for (int y = row; y < 22; y++)
+    {
+        int count = 0;
+        for (int x = 0; x < 10; x++)
+        {
+            board[x + y * 10] = board[x + (y + 1) * 10];
+            if (!board[x + (y + 1) * 10])
+                count++;
+            board[x + (y + 1) * 10] = 0;
+        }
+        render(board);
+        Sleep(500);
+        if (count == 10)
+            return;
+    }
+}
+
+void play_fall_animation(int(*board))
+{
+    int row = check_board_row(board);
+    while (row != -1)
+    {
+        clear_row(board, row);
+        bring_board_down(board, row);
+        row = check_board_row(board);
+    }
+}
 
 void render(int(*board))
 {

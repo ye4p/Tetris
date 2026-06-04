@@ -26,7 +26,7 @@ enum Direction
 typedef struct Shape
 {
     int falls;
-    int (*shape)[16];
+    int(*shape); // Array of size 16
     int shape_type;
     int pos_x;
     int pos_y;
@@ -38,9 +38,9 @@ typedef struct Shape
 //
 //
 
-void update_game(Shape *falling_shape, int(*board), int (*shapes)[16]);
+void update_game(Shape *falling_shape, int(*board), int (*shapes)[16], int *score);
 void handle_input(Shape *falling_shape, int(*board));
-void render(int(*board));
+void render(int(*board), int *score);
 void sleep_small_amount(void);
 int find_board_square(Shape *falling_shape, int x, int y);
 int can_move_dir(Shape *falling_shape, int(*board), int direction);
@@ -49,10 +49,11 @@ void draw(Shape *falling_shape, int(*board));
 void erase(Shape *falling_shape, int(*board));
 int can_rotate(Shape *falling_shape, int(*board), int(*arr));
 int *rotate(Shape *falling_shape, int(*arr));
-int check_board_row(int(*board));
+int check_board_row(int(*board), int *score);
 void clear_row(int(*board), int row);
-void bring_board_down(int(*board), int row);
-void play_fall_animation(int(*board));
+void bring_board_down(int(*board), int row, int *score);
+void play_fall_animation(int(*board), int *score);
+void display_score(int *score);
 
 //
 //
@@ -83,7 +84,7 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
         {
             for (int y = 0; y < 4; y++)
             {
-                if (!(*falling_shape->shape)[x + y * 4])
+                if (!falling_shape->shape[x + y * 4])
                 {
                     continue;
                 }
@@ -95,7 +96,7 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
                 }
 
                 // Check if hits another piece
-                int square = find_board_square(falling_shape, x - 1, y);
+                int square = find_board_square(falling_shape, x - 2, y);
 
                 if (board[square])
                 {
@@ -111,7 +112,7 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
         {
             for (int y = 0; y < 4; y++)
             {
-                if (!(*falling_shape->shape)[x + y * 4])
+                if (!falling_shape->shape[x + y * 4])
                 {
                     continue;
                 }
@@ -123,14 +124,7 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
                 }
 
                 // Check if hits another piece
-                int square = find_board_square(falling_shape, x + 1, y); // +1 cause checking if touches right
-
-                // TODO: FIX WRONG Y indexing that is used to calculate square
-
-                //  0   2
-                //  1   1
-                //  2   0
-                //  3   -1
+                int square = find_board_square(falling_shape, x, y);
 
                 if (board[square])
                 {
@@ -146,7 +140,7 @@ int can_move_dir(Shape *falling_shape, int(*board), int direction)
         {
             for (int x = 0; x < 4; x++)
             {
-                if (!((*falling_shape->shape)[x + y * 4]))
+                if (!(falling_shape->shape[x + y * 4]))
                 {
                     continue;
                 }
@@ -217,18 +211,17 @@ void handle_input(Shape *falling_shape, int(*board))
     }
 }
 
-void update_game(Shape *falling_shape, int(*board), int (*shapes)[16])
+void update_game(Shape *falling_shape, int(*board), int (*shapes)[16], int *score)
 {
 
     // Handle getting new piece
     if (falling_shape->falls != 1)
     {
-        // printf("updating shape object");
         // Set new shape
         set_random_shape(falling_shape, shapes);
 
         // Play animation
-        play_fall_animation(board);
+        play_fall_animation(board, score);
     }
 
     if (!can_move_dir(falling_shape, board, down))
@@ -237,7 +230,7 @@ void update_game(Shape *falling_shape, int(*board), int (*shapes)[16])
         set_random_shape(falling_shape, shapes);
 
         // Play animation
-        play_fall_animation(board);
+        play_fall_animation(board, score);
         return;
     }
 
@@ -253,9 +246,9 @@ void set_random_shape(Shape *falling_shape, int (*shapes)[16])
 
     falling_shape->falls = 1;
     falling_shape->shape_type = random_number;
-    falling_shape->shape = &shapes[random_number];
+    memcpy(falling_shape->shape, shapes[random_number], sizeof(int) * 16);
     falling_shape->pos_x = 4;
-    falling_shape->pos_y = 21;
+    falling_shape->pos_y = 20;
 }
 
 void draw(Shape *falling_shape, int(*board))
@@ -264,7 +257,7 @@ void draw(Shape *falling_shape, int(*board))
     {
         for (int y = 0; y < 4; y++)
         {
-            if (!((*falling_shape->shape)[x + 4 * y]))
+            if (!(falling_shape->shape[x + 4 * y]))
             {
                 continue;
             }
@@ -281,15 +274,13 @@ void erase(Shape *falling_shape, int(*board))
     {
         for (int y = 0; y < 4; y++)
         {
-            if (!((*falling_shape->shape)[x + 4 * y]))
+            if (!(falling_shape->shape[x + 4 * y]))
             {
                 continue;
             }
 
             int square = find_board_square(falling_shape, x - 1, y);
             board[square] = 0;
-
-            // board[x - 1 + falling_shape->pos_x][falling_shape->pos_y - y] = 0;
         }
     }
 }
@@ -301,7 +292,7 @@ int can_rotate(Shape *falling_shape, int(*board), int(*arr))
     {
         for (int y = 0; y < 4; y++)
         {
-            if (!arr[x + 4 * y] && !(*falling_shape->shape)[x + 4 * y])
+            if (!arr[x + 4 * y] && !falling_shape->shape[x + 4 * y])
                 continue;
 
             int square = find_board_square(falling_shape, x, y);
@@ -309,17 +300,15 @@ int can_rotate(Shape *falling_shape, int(*board), int(*arr))
             // Check for being OOB
             int real_x = x - 2 + falling_shape->pos_x;
             int real_y = y + falling_shape->pos_y;
-            if (real_x > 9 || real_x < 0 || real_y < 0)
+            if (real_x > 9 || real_x < 0 || real_y < 0 || real_y > 22)
             {
                 draw(falling_shape, board);
-                // printf("can't rotate, OOB with x: %i, and y:%i\n", real_x, real_y);
                 return 0;
             }
 
             // Check for intersection with other shapes
             if (board[square])
             {
-                // printf("can't rotate, space is taken\n");
                 draw(falling_shape, board);
                 return 0;
             }
@@ -332,7 +321,6 @@ int can_rotate(Shape *falling_shape, int(*board), int(*arr))
 int *rotate(Shape *falling_shape, int(*arr))
 {
     // Should rotate shape 90 degrees clockwise
-
     if (falling_shape->shape_type < 2)
     {
         int i = 0;
@@ -341,7 +329,7 @@ int *rotate(Shape *falling_shape, int(*arr))
         {
             for (int y = 3; y > -1; y--)
             {
-                arr[x + 4 * y] = (*falling_shape->shape)[i];
+                arr[x + 4 * y] = falling_shape->shape[i];
                 i++;
             }
         }
@@ -359,25 +347,15 @@ int *rotate(Shape *falling_shape, int(*arr))
                     i += 1;
                     continue;
                 }
-                arr[x + 4 * y] = (*falling_shape->shape)[i];
+                arr[x + 4 * y] = falling_shape->shape[i];
                 i++;
             }
         }
     }
 }
 
-//  0 0 0 0         0 1 0 0
-//  0 0 0 0     --> 0 1 0 0
-//  1 1 1 1         0 1 0 0
-//  0 0 0 0         0 1 0 0
-
-//  0 0 0 0         0 0 0 0
-//  1 0 0 0     --> 0 1 1 0
-//  1 1 1 0         0 1 0 0
-//  0 0 0 0         0 1 0 0
-
 // Returns row that is going to be removed
-int check_board_row(int(*board))
+int check_board_row(int(*board), int *score)
 {
     for (int y = 0; y < 22; y++)
     {
@@ -391,6 +369,7 @@ int check_board_row(int(*board))
         }
         if (count == 10)
         {
+            (*score) += 100;
             return y;
         }
     }
@@ -405,9 +384,9 @@ void clear_row(int(*board), int row)
     }
 }
 
-void bring_board_down(int(*board), int row)
+void bring_board_down(int(*board), int row, int *score)
 {
-    render(board);
+    render(board, score);
     Sleep(500);
     for (int y = row; y < 22; y++)
     {
@@ -419,29 +398,31 @@ void bring_board_down(int(*board), int row)
                 count++;
             board[x + (y + 1) * 10] = 0;
         }
-        render(board);
+        render(board, score);
         Sleep(500);
         if (count == 10)
             return;
     }
 }
 
-void play_fall_animation(int(*board))
+void play_fall_animation(int(*board), int *score)
 {
-    int row = check_board_row(board);
+    int row = check_board_row(board, score);
     while (row != -1)
     {
         clear_row(board, row);
-        bring_board_down(board, row);
-        row = check_board_row(board);
+        bring_board_down(board, row, score);
+        row = check_board_row(board, score);
     }
 }
 
-void render(int(*board))
+void render(int(*board), int *score)
 {
-    for (int y = 22; y > -2; y--)
+    printf("\033[2J");
+    printf("\033[H\n\n\n");
+
+    for (int y = 20; y > -2; y--)
     {
-        // printf("value of y is %i\n", y);
         if (y == -1)
         {
             printf("######################\n");
@@ -449,7 +430,6 @@ void render(int(*board))
         }
         for (int x = -1; x < 11; x++)
         {
-            // printf("value of x is %i\n", x);
             if (x == -1 || x == 10)
             {
                 printf("|");
@@ -457,17 +437,8 @@ void render(int(*board))
             }
             if (board[x + 10 * y] == 1)
             {
-                // printf("1 at squares %i and %i", x, y);
                 printf("[]");
             }
-            // else if (board[x + 10 * y] == 2)
-            // {
-            //     printf("{}");
-            // }
-            // else if (board[x + 10 * y] == 3)
-            // {
-            //     printf("/\\");
-            // }
             else
             {
                 printf("  ");
@@ -475,45 +446,16 @@ void render(int(*board))
         }
         printf("\n");
     }
+    display_score(score);
 }
 
-//
-//      [][][]
-//        []
-//
+void display_score(int *score)
+{
+    printf("Current score: %i", *score);
+}
 
-//
-//  The position is centered by following square:
-//      0 0 0 0
-//      0 0 0 0
-//      0 1 0 0
-//      0 0 0 0
-//
-
-//
-//
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0            0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0            0 0 0 0
-//  0 1 1 1 0 0 0 0 0 0     <--    1 1 1 0
-//  0 1 0 0 0 0 0 0 0 0            1 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//  0 0 0 0 0 0 0 0 0 0
-//      ^
-//  0 1 2 3 4 5 6 7 8 9
+int score = 0;
+int *score_ptr = &score;
 
 int main()
 {
@@ -573,40 +515,20 @@ int main()
 
     int game_running = 1;
 
-    Shape falling_shape; // {1, &empty_arr, -1, -1};
+    Shape falling_shape;
     falling_shape.falls = 0;
     falling_shape.shape = malloc(sizeof(int) * 16);
-    falling_shape.shape = &empty_arr;
+    memcpy(falling_shape.shape, empty_arr, sizeof(empty_arr));
     falling_shape.pos_x = -1;
     falling_shape.pos_y = -1;
 
-    // set_random_shape(&falling_shape, shapes);
-
-    // falling_shape.pos_y -= 3;
-    // draw(&falling_shape, board);
-
-    // falling_shape.pos_y -= 3;
-    // int arr[16] = {0};
-    // rotate(&falling_shape, arr);
-    // memcpy(falling_shape.shape, arr, sizeof(arr));
-
-    // draw(&falling_shape, board);
-
-    // falling_shape.pos_y -= 3;
-    // rotate(&falling_shape);
-    // draw(&falling_shape, board);
-
-    // falling_shape.pos_y -= 3;
-    // rotate(&falling_shape);
-    // draw(&falling_shape, board);
-
-    render(board);
+    render(board, score_ptr);
 
     while (game_running)
     {
         handle_input(&falling_shape, board);
-        update_game(&falling_shape, board, shapes);
-        render(board);
+        update_game(&falling_shape, board, shapes, score_ptr);
+        render(board, score_ptr);
 
         sleep_small_amount();
     }
